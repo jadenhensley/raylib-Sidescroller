@@ -18,6 +18,7 @@ struct Chunk
     int x = 0;
     int y = 0;
     bool active = false;
+    bool generated = false;
     uint8_t tiles[CHUNK_WIDTH * CHUNK_WIDTH] = { 0 };
     Color debugColor = BLACK;
 };
