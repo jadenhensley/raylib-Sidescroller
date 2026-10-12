@@ -11,6 +11,12 @@ const int TILE_SIZE = 16;
 const int CHUNK_WIDTH = 16;
 const int SECTOR_WIDTH = 256;
 
+enum class BIOME : uint8_t {
+    GRASSLAND = 0,
+    SNOWLAND = 1,
+    SANDLAND = 2,
+    COUNT = 3,
+};
 struct Chunk
 {
     // 16x16 grid of tile IDs. 
@@ -20,6 +26,7 @@ struct Chunk
     bool active = false;
     bool generated = false;
     uint8_t tiles[CHUNK_WIDTH * CHUNK_WIDTH] = { 0 };
+    uint8_t biome = 0;
     Color debugColor = BLACK;
 };
 

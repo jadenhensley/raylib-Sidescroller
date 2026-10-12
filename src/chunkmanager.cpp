@@ -40,6 +40,7 @@ Chunk* ChunkManager::GetChunk(int chunkX, int chunkY) {
         chunk.debugColor = { (unsigned char)GetRandomValue(50, 200),
                                     (unsigned char)GetRandomValue(50, 200),
                                     (unsigned char)GetRandomValue(50, 200), 255 };
+        chunk.biome = (rand() % (size_t)BIOME::COUNT);
         // Generate your tile layout here...
     }
 

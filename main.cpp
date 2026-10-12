@@ -35,7 +35,7 @@ struct Dimensions {
 
 static const Dimensions lookupTextureDimensions[(size_t)TEXTUREID::COUNT] = {
     { 4,1 }, // CHARSKIN
-    { 2,2 }, // TERRAIN
+    { 2,5 }, // TERRAIN
 };
 
 static enum class TEXTUREINDEX_TERRAIN : uint8_t {
@@ -43,7 +43,13 @@ static enum class TEXTUREINDEX_TERRAIN : uint8_t {
     GRASS_VAR2 = 1,
     DIRT_VAR1 = 2,
     DIRT_VAR2 = 3,
-    COUNT = 4,
+    STONE_VAR1 = 4,
+    STONE_VAR2 = 5,
+    SAND_VAR1 = 6,
+    SAND_VAR2 = 7,
+    SNOW_VAR1 = 8,
+    SNOW_VAR2 = 9,
+    COUNT = 10,
 };
 
 static enum class ATLASID : uint8_t {
@@ -56,7 +62,7 @@ static enum class ATLASID : uint8_t {
 struct TileTexture
 {
     ATLASID atlas;
-    uint8_t textureIndex;
+    std::pair<uint8_t, uint8_t> textureIndex;
 };
 
 static enum class TILEID : uint8_t {
@@ -65,15 +71,27 @@ static enum class TILEID : uint8_t {
     DIRT_VAR2 = 2,
     GRASS_VAR1 = 3,
     GRASS_VAR2 = 4,
-    COUNT = 5,
+    STONE_VAR1 = 5,
+    STONE_VAR2 = 6,
+    SAND_VAR1 = 7,
+    SAND_VAR2 = 8,
+    SNOW_VAR1 = 9,
+    SNOW_VAR2 = 10,
+    COUNT = 11,
 };
 
 static const TileTexture lookupTileTexture[(size_t)TILEID::COUNT] = {
-    { ATLASID::NIL, 0 },
-    { ATLASID::TERRAIN, (uint8_t)TEXTUREINDEX_TERRAIN::DIRT_VAR1 },
-    { ATLASID::TERRAIN, (uint8_t)TEXTUREINDEX_TERRAIN::DIRT_VAR2 },
-    { ATLASID::TERRAIN, (uint8_t)TEXTUREINDEX_TERRAIN::GRASS_VAR1 },
-    { ATLASID::TERRAIN, (uint8_t)TEXTUREINDEX_TERRAIN::GRASS_VAR2 },
+    { ATLASID::NIL, {0,0} },
+    { ATLASID::TERRAIN, {(uint8_t)TEXTUREINDEX_TERRAIN::DIRT_VAR1 , (uint8_t)TEXTUREINDEX_TERRAIN::COUNT} },
+    { ATLASID::TERRAIN, {(uint8_t)TEXTUREINDEX_TERRAIN::DIRT_VAR2 , (uint8_t)TEXTUREINDEX_TERRAIN::COUNT} },
+    { ATLASID::TERRAIN, {(uint8_t)TEXTUREINDEX_TERRAIN::DIRT_VAR1 , (uint8_t)TEXTUREINDEX_TERRAIN::GRASS_VAR1} },
+    { ATLASID::TERRAIN, {(uint8_t)TEXTUREINDEX_TERRAIN::DIRT_VAR2 , (uint8_t)TEXTUREINDEX_TERRAIN::GRASS_VAR2} },
+    { ATLASID::TERRAIN, {(uint8_t)TEXTUREINDEX_TERRAIN::STONE_VAR1, (uint8_t)TEXTUREINDEX_TERRAIN::COUNT} },
+    { ATLASID::TERRAIN, {(uint8_t)TEXTUREINDEX_TERRAIN::STONE_VAR2, (uint8_t)TEXTUREINDEX_TERRAIN::COUNT} },
+    { ATLASID::TERRAIN, {(uint8_t)TEXTUREINDEX_TERRAIN::SAND_VAR1 , (uint8_t)TEXTUREINDEX_TERRAIN::COUNT} },
+    { ATLASID::TERRAIN, {(uint8_t)TEXTUREINDEX_TERRAIN::SAND_VAR2 , (uint8_t)TEXTUREINDEX_TERRAIN::COUNT} },
+    { ATLASID::TERRAIN, {(uint8_t)TEXTUREINDEX_TERRAIN::DIRT_VAR1 , (uint8_t)TEXTUREINDEX_TERRAIN::SNOW_VAR1} },
+    { ATLASID::TERRAIN, {(uint8_t)TEXTUREINDEX_TERRAIN::DIRT_VAR2 , (uint8_t)TEXTUREINDEX_TERRAIN::SNOW_VAR2} },
 };
 
 enum CAMERAMODE {
@@ -84,6 +102,13 @@ enum CAMERAMODE {
 
 void DrawTextureAtAtlasIndex(Texture& txt, Vector2 pos, const int& idx, const Dimensions& dim, const int& tileSize = 0)
 {
+    //if (idx == dim.width * dim.height)
+    //{
+    //    printf("NOT THIS \n");
+    //    // it is too big, ignore it, so we dont wrap around to another texture if we want to use COUNT as a placeholder for NIL.
+    //    // note: we use == because it is 0-indicing.
+    //    return;
+    //}
     Rectangle source{};
     int col = idx % dim.width;
     int row = idx / dim.width;
@@ -132,7 +157,7 @@ int main(int argc, char* argv[])
     ChunkManager chunkManager = {};
 
     Texture ATLAS_CHARSKIN = LoadTexture("./assets/atlas_characterSkin_4x.png");
-    Texture ATLAS_TERRAIN = LoadTexture("./assets/atlas_grassAndDirtSheet_2x2.png");
+    Texture ATLAS_TERRAIN = LoadTexture("./assets/atlas_terrainSheet_2x5.png");
 
 
 
@@ -227,13 +252,18 @@ int main(int argc, char* argv[])
         int playerChunkY = playerPos.y / CHUNK_WORLD_WIDTH;
         const int SPAWN_CHUNK_X = 0;
         const int SPAWN_CHUNK_Y = 0;
-        const int CHUNK_LOADING_RADIUS_X = 4;
+        const int CHUNK_LOADING_RADIUS_X = 8;
         const int CHUNK_LOADING_RADIUS_Y = 1;
         const int *centerChunkX = &playerChunkX;
-        const int* centerChunkY = &playerChunkY;
-        for (int currChunkX = *centerChunkX - CHUNK_LOADING_RADIUS_X; currChunkX <= *centerChunkX + CHUNK_LOADING_RADIUS_X; ++currChunkX)
+        const int *centerChunkY = &playerChunkY;
+        const int minChunkLoadX = *centerChunkX - CHUNK_LOADING_RADIUS_X;
+        const int maxChunkLoadX = *centerChunkX + CHUNK_LOADING_RADIUS_X;
+        
+        const int minChunkLoadY = *centerChunkY - 1;
+        const int maxChunkLoadY = *centerChunkY + 4;
+        for (int currChunkX = minChunkLoadX; currChunkX <= maxChunkLoadX; ++currChunkX)
         {
-            for (int currChunkY = *centerChunkY - CHUNK_LOADING_RADIUS_Y; currChunkY <= *centerChunkY + CHUNK_LOADING_RADIUS_Y; ++currChunkY)
+            for (int currChunkY = minChunkLoadY; currChunkY <= maxChunkLoadY; ++currChunkY)
             {
                 Chunk* ptrCurrChunk = chunkManager.GetChunk(currChunkX, currChunkY);
                 if (ptrCurrChunk != nullptr)
@@ -254,9 +284,57 @@ int main(int argc, char* argv[])
                                 switch (r)
                                 {
                                 case 0:
-                                    return (uint8_t)TEXTUREINDEX_TERRAIN::DIRT_VAR1;
+                                    return (uint8_t)TILEID::DIRT_VAR1;
                                 case 1:
-                                    return (uint8_t)TEXTUREINDEX_TERRAIN::DIRT_VAR2;
+                                    return (uint8_t)TILEID::DIRT_VAR2;
+                                }
+                            };
+
+                        auto getRandStoneIndex = []() -> uint8_t
+                            {
+                                int r = rand() % 2;
+                                switch (r)
+                                {
+                                case 0:
+                                    return (uint8_t)TILEID::STONE_VAR1;
+                                case 1:
+                                    return (uint8_t)TILEID::STONE_VAR2;
+                                }
+                            };
+
+                        auto getRandGrassIndex = []() -> uint8_t
+                            {
+                                int r = rand() % 2;
+                                switch (r)
+                                {
+                                case 0:
+                                    return (uint8_t)TILEID::GRASS_VAR1;
+                                case 1:
+                                    return (uint8_t)TILEID::GRASS_VAR2;
+                                }
+                            };
+
+                        auto getRandSnowIndex = []() -> uint8_t
+                            {
+                                int r = rand() % 2;
+                                switch (r)
+                                {
+                                case 0:
+                                    return (uint8_t)TILEID::SNOW_VAR1;
+                                case 1:
+                                    return (uint8_t)TILEID::SNOW_VAR2;
+                                }
+                            };
+
+                        auto getRandSandIndex = []() -> uint8_t
+                            {
+                                int r = rand() % 2;
+                                switch (r)
+                                {
+                                case 0:
+                                    return (uint8_t)TILEID::SAND_VAR1;
+                                case 1:
+                                    return (uint8_t)TILEID::SAND_VAR2;
                                 }
                             };
 
@@ -270,17 +348,50 @@ int main(int argc, char* argv[])
                     
                             int elevation = 8 + (int)(noise * 7);
                             // (8-7=1)...(8+7=15)
-                            for (int posY = 0; posY < elevation; ++posY)
+                            if (ptrCurrChunk->y == 0)
                             {
-                                if (posY >= 0 && posY < CHUNK_WIDTH)
+                                // assign dirt or sand
+                                for (int posY = 0; posY < elevation; ++posY)
                                 {
-                                    ptrCurrChunk->tiles[((CHUNK_WIDTH - posY) * CHUNK_WIDTH) + posX] = getRandDirtIndex();
+                                    if (posY >= 0 && posY < CHUNK_WIDTH)
+                                    {
+                                        //printf("[%d]", CHUNK_WIDTH - 1 - posY);
+                                        if (ptrCurrChunk->biome == (uint8_t)BIOME::GRASSLAND
+                                            || ptrCurrChunk->biome == (uint8_t)BIOME::SNOWLAND)
+                                        {
+                                            ptrCurrChunk->tiles[((CHUNK_WIDTH - 1 - posY) * CHUNK_WIDTH) + posX] = getRandDirtIndex();
+                                        }
+                                        else
+                                        {
+                                            if (ptrCurrChunk->biome == (uint8_t)BIOME::SANDLAND)
+                                            {
+                                                ptrCurrChunk->tiles[((CHUNK_WIDTH - 1 - posY) * CHUNK_WIDTH) + posX] = getRandSandIndex();
+                                            }
+                                        }
+                                    }
+                                    // int elevation = 12 + (int)(noise * 8);
+                                    // Height ranges from 4 to 20
+                                    // (12-8)...(12+8)
                                 }
-                                // int elevation = 12 + (int)(noise * 8);
-                                // Height ranges from 4 to 20
-                                // (12-8)...(12+8)
-                        
+                                // add grass or snow.
+                                int posY = elevation;
+                                if (ptrCurrChunk->biome == (uint8_t)BIOME::GRASSLAND)
+                                {
+                                    ptrCurrChunk->tiles[((CHUNK_WIDTH - 1 - posY) * CHUNK_WIDTH) + posX] = getRandGrassIndex();
+                                }
+                                if (ptrCurrChunk->biome == (uint8_t)BIOME::SNOWLAND)
+                                {
+                                    ptrCurrChunk->tiles[((CHUNK_WIDTH - 1 - posY) * CHUNK_WIDTH) + posX] = getRandSnowIndex();
+                                }
                             }
+                            if (ptrCurrChunk->y > 0)
+                            {
+                                for (int posY = 0; posY < CHUNK_WIDTH; ++posY)
+                                {
+                                    ptrCurrChunk->tiles[(posY * CHUNK_WIDTH) + posX] = getRandStoneIndex();
+                                }
+                            }
+
                         }
 
                         ptrCurrChunk->generated = true;
@@ -302,14 +413,50 @@ int main(int argc, char* argv[])
                                 // todo(jaden): fix visual bug involving rendering of distant chunks.
 
 
-                                uint8_t textureIndex = ptrCurrChunk->tiles[posY * CHUNK_WIDTH + posX];
-                                DrawTextureAtAtlasIndex(
-                                    ATLAS_TERRAIN,
-                                    { atPosX,atPosY },
-                                    (int)textureIndex,
-                                    lookupTextureDimensions[(int)TEXTUREID::TERRAIN],
-                                    TILE_SIZE
-                                );
+                                TileTexture currTexture = lookupTileTexture[ptrCurrChunk->tiles[posY * CHUNK_WIDTH + posX]];
+                                Texture* ptrCurrAtlas = nullptr;
+                                if (currTexture.atlas == ATLASID::TERRAIN)
+                                {
+                                    ptrCurrAtlas = &ATLAS_TERRAIN;
+                                }
+                                // uint8_t textureIndex = currTexture.textureIndex;
+                                if (ptrCurrAtlas != nullptr && currTexture.atlas != ATLASID::NIL)
+                                {
+                                    DrawTextureAtAtlasIndex(
+                                        *ptrCurrAtlas,
+                                        { atPosX,atPosY },
+                                        (int)currTexture.textureIndex.first,
+                                        lookupTextureDimensions[(int)TEXTUREID::TERRAIN],
+                                        TILE_SIZE
+                                    );
+                                    if (currTexture.textureIndex.first != currTexture.textureIndex.second)
+                                    {
+                                        auto isSecondTextureNil = [currTexture]() -> bool
+                                            {
+                                                if (currTexture.atlas == ATLASID::TERRAIN)
+                                                {
+                                                    if (currTexture.textureIndex.second == (uint8_t)TEXTUREINDEX_TERRAIN::COUNT)
+                                                    {
+                                                        // We treat COUNT as NIL.
+                                                        // Do this for every texture atlas if this is how its designed.
+                                                        return true;
+                                                    }
+                                                }
+                                                return false;
+                                            };
+                                        bool nilFound = isSecondTextureNil();
+                                        if (!nilFound)
+                                        {
+                                            DrawTextureAtAtlasIndex(
+                                                *ptrCurrAtlas,
+                                                { atPosX,atPosY },
+                                                (int)currTexture.textureIndex.second,
+                                                lookupTextureDimensions[(int)TEXTUREID::TERRAIN],
+                                                TILE_SIZE
+                                            );
+                                        }
+                                    }
+                                }
                                 // assert(textureIndex != 3, "equals four.");
                             }
                         }
@@ -322,6 +469,14 @@ int main(int argc, char* argv[])
         DrawCircle((int)playerPos.x, (int)playerPos.y, 8.0f, RED);
 
         EndMode2D();
+
+        static util_printui ui;
+        ui.resetui();
+        ui.setFontSize(36);
+        ui.printui("Coordinates");
+        ui.setFontSize(24);
+        ui.printui(TextFormat("Player Chunk X: %d", playerChunkX));
+        ui.printui(TextFormat("Player Chunk Y: %d", playerChunkY));
 
         static bool F3_TOGGLE = false;
         if (IsKeyPressed(KEY_F3))
