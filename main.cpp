@@ -22,21 +22,6 @@
 #define SCREEN_WIDTH 800
 #define SCREEN_HEIGHT 400
 
-enum class TEXTUREID : uint8_t {
-    CHARSKIN,
-    TERRAIN,
-    COUNT
-};
-
-struct Dimensions {
-    int width;
-    int height;
-};
-
-static const Dimensions lookupTextureDimensions[(size_t)TEXTUREID::COUNT] = {
-    { 4,1 }, // CHARSKIN
-    { 2,5 }, // TERRAIN
-};
 
 static enum class TEXTUREINDEX_TERRAIN : uint8_t {
     GRASS_VAR1 = 0,
@@ -52,11 +37,19 @@ static enum class TEXTUREINDEX_TERRAIN : uint8_t {
     COUNT = 10,
 };
 
+static enum class TEXTUREINDEX_PLANTS : uint8_t {
+    CACTUS = 0,
+    TREE_OAK = 1,
+    TREE_SPRUCE = 2,
+    COUNT = 3,
+};
+
 static enum class ATLASID : uint8_t {
     NIL = 0,
     CHARSKIN = 1,
     TERRAIN = 2,
-    COUNT = 3,
+    PLANTS = 3,
+    COUNT = 4,
 };
 
 struct TileTexture
@@ -66,6 +59,7 @@ struct TileTexture
 };
 
 static enum class TILEID : uint8_t {
+    // BLOCK TILES
     AIR = 0,
     DIRT_VAR1 = 1,
     DIRT_VAR2 = 2,
@@ -76,8 +70,24 @@ static enum class TILEID : uint8_t {
     SAND_VAR1 = 7,
     SAND_VAR2 = 8,
     SNOW_VAR1 = 9,
-    SNOW_VAR2 = 10,
-    COUNT = 11,
+    SNOW_VAR2 = 10, 
+    // SPECIAL TILES
+    CACTUS = 11,
+    TREE_OAK = 12,
+    TREE_SPRUCE = 13,
+    COUNT = 14,
+};
+
+struct Dimensions {
+    int width;
+    int height;
+};
+
+static const Dimensions lookupTextureAtlasDimensions[(size_t)ATLASID::COUNT] = {
+    { 0,0 }, // NIL
+    { 4,1 }, // CHARSKIN
+    { 2,5 }, // TERRAIN
+    { 3,1 }, // PLANTS
 };
 
 static const TileTexture lookupTileTexture[(size_t)TILEID::COUNT] = {
@@ -92,6 +102,9 @@ static const TileTexture lookupTileTexture[(size_t)TILEID::COUNT] = {
     { ATLASID::TERRAIN, {(uint8_t)TEXTUREINDEX_TERRAIN::SAND_VAR2 , (uint8_t)TEXTUREINDEX_TERRAIN::COUNT} },
     { ATLASID::TERRAIN, {(uint8_t)TEXTUREINDEX_TERRAIN::DIRT_VAR1 , (uint8_t)TEXTUREINDEX_TERRAIN::SNOW_VAR1} },
     { ATLASID::TERRAIN, {(uint8_t)TEXTUREINDEX_TERRAIN::DIRT_VAR2 , (uint8_t)TEXTUREINDEX_TERRAIN::SNOW_VAR2} },
+    { ATLASID::PLANTS, {(uint8_t)TEXTUREINDEX_PLANTS::CACTUS      , (uint8_t)TEXTUREINDEX_PLANTS::COUNT} }, // CACTUS
+    { ATLASID::PLANTS, {(uint8_t)TEXTUREINDEX_PLANTS::TREE_OAK    , (uint8_t)TEXTUREINDEX_PLANTS::COUNT} }, // OAK TREE
+    { ATLASID::PLANTS, {(uint8_t)TEXTUREINDEX_PLANTS::TREE_SPRUCE , (uint8_t)TEXTUREINDEX_PLANTS::COUNT} }, // SPRUCE TREE
 };
 
 enum CAMERAMODE {
@@ -102,13 +115,6 @@ enum CAMERAMODE {
 
 void DrawTextureAtAtlasIndex(Texture& txt, Vector2 pos, const int& idx, const Dimensions& dim, const int& tileSize = 0)
 {
-    //if (idx == dim.width * dim.height)
-    //{
-    //    printf("NOT THIS \n");
-    //    // it is too big, ignore it, so we dont wrap around to another texture if we want to use COUNT as a placeholder for NIL.
-    //    // note: we use == because it is 0-indicing.
-    //    return;
-    //}
     Rectangle source{};
     int col = idx % dim.width;
     int row = idx / dim.width;
@@ -158,7 +164,7 @@ int main(int argc, char* argv[])
 
     Texture ATLAS_CHARSKIN = LoadTexture("./assets/atlas_characterSkin_4x.png");
     Texture ATLAS_TERRAIN = LoadTexture("./assets/atlas_terrainSheet_2x5.png");
-
+    Texture ATLAS_PLANTS = LoadTexture("./assets/atlas_plantSheet_3x1.png");
 
 
 
@@ -249,7 +255,7 @@ int main(int argc, char* argv[])
         
         const int CHUNK_WORLD_WIDTH = TILE_SIZE * CHUNK_WIDTH;
         int playerChunkX = playerPos.x / CHUNK_WORLD_WIDTH;
-        int playerChunkY = playerPos.y / CHUNK_WORLD_WIDTH;
+        int playerChunkY = (int)floor( (float)playerPos.y / CHUNK_WORLD_WIDTH );
         const int SPAWN_CHUNK_X = 0;
         const int SPAWN_CHUNK_Y = 0;
         const int CHUNK_LOADING_RADIUS_X = 8;
@@ -338,6 +344,28 @@ int main(int argc, char* argv[])
                                 }
                             };
 
+                        auto getRandPlantIndex = [](const BIOME& biomeType) -> uint8_t
+                            {
+                                bool doSpawn = (0 == (rand() % 10));
+                                if (!doSpawn)
+                                {
+                                    return (uint8_t)TILEID::AIR;
+                                }
+                                else
+                                {
+                                    switch (biomeType)
+                                    {
+                                    case BIOME::GRASSLAND:
+                                        return (uint8_t)TILEID::TREE_OAK;
+                                    case BIOME::SNOWLAND:
+                                        return (uint8_t)TILEID::TREE_SPRUCE;
+                                    case BIOME::SANDLAND:
+                                        return (uint8_t)TILEID::CACTUS;
+                                    }
+
+                                }
+                            };
+
                         static const siv::PerlinNoise::seed_type seed = 123456u;
                         static const siv::PerlinNoise perlin{ seed };
 
@@ -361,13 +389,13 @@ int main(int argc, char* argv[])
                                         {
                                             ptrCurrChunk->tiles[((CHUNK_WIDTH - 1 - posY) * CHUNK_WIDTH) + posX] = getRandDirtIndex();
                                         }
-                                        else
-                                        {
+                                        //else
+                                        //{
                                             if (ptrCurrChunk->biome == (uint8_t)BIOME::SANDLAND)
                                             {
                                                 ptrCurrChunk->tiles[((CHUNK_WIDTH - 1 - posY) * CHUNK_WIDTH) + posX] = getRandSandIndex();
                                             }
-                                        }
+                                        //}
                                     }
                                     // int elevation = 12 + (int)(noise * 8);
                                     // Height ranges from 4 to 20
@@ -382,6 +410,19 @@ int main(int argc, char* argv[])
                                 if (ptrCurrChunk->biome == (uint8_t)BIOME::SNOWLAND)
                                 {
                                     ptrCurrChunk->tiles[((CHUNK_WIDTH - 1 - posY) * CHUNK_WIDTH) + posX] = getRandSnowIndex();
+                                }
+                                if (ptrCurrChunk->biome == (uint8_t)BIOME::SANDLAND)
+                                {
+                                    ptrCurrChunk->tiles[((CHUNK_WIDTH - 1 - posY) * CHUNK_WIDTH) + posX] = getRandSandIndex();
+                                }
+                                posY += 1;
+                                // 1 in 10 chance to spawn a plant. depends on biome.   
+                                uint8_t currPlantId = getRandPlantIndex((BIOME)ptrCurrChunk->biome);
+                                ptrCurrChunk->tiles[((CHUNK_WIDTH - 1 - posY) * CHUNK_WIDTH) + posX] = currPlantId;
+                                if (currPlantId > 0)
+                                {
+                                    printf("Plant of tile ID %d spawning at tile = {X: %d , Y: %d } chunk = {X: %d , Y: %d} \n \t Elevation = { %d } \n",
+                                        (int)currPlantId, posX, CHUNK_WIDTH - 1 - posY, ptrCurrChunk->x, ptrCurrChunk->y, elevation);
                                 }
                             }
                             if (ptrCurrChunk->y > 0)
@@ -407,8 +448,8 @@ int main(int argc, char* argv[])
                                 // (int)floor((double)worldY / CHUNK_HEIGHT);
 
                                 // e.g. world pos 
-                                float atPosX = (float)(int)(ptrCurrChunk->x * CHUNK_WORLD_WIDTH) + (posX * TILE_SIZE);
-                                float atPosY = (float)(int)(ptrCurrChunk->y * CHUNK_WORLD_WIDTH) + (posY * TILE_SIZE);
+                                float renderPosX = (float)(int)(ptrCurrChunk->x * CHUNK_WORLD_WIDTH) + (posX * TILE_SIZE);
+                                float renderPosY = (float)(int)(ptrCurrChunk->y * CHUNK_WORLD_WIDTH) + (posY * TILE_SIZE);
 
                                 // todo(jaden): fix visual bug involving rendering of distant chunks.
 
@@ -419,15 +460,25 @@ int main(int argc, char* argv[])
                                 {
                                     ptrCurrAtlas = &ATLAS_TERRAIN;
                                 }
+                                if (currTexture.atlas == ATLASID::PLANTS)
+                                {
+                                    ptrCurrAtlas = &ATLAS_PLANTS;
+                                }
                                 // uint8_t textureIndex = currTexture.textureIndex;
                                 if (ptrCurrAtlas != nullptr && currTexture.atlas != ATLASID::NIL)
                                 {
+                                    bool isSpecialTile = (currTexture.atlas == ATLASID::PLANTS);
+                                    if (isSpecialTile)
+                                    {
+                                        // note: update this later when we arent doing just plants.
+                                        renderPosY -= TILE_SIZE;
+                                    }
                                     DrawTextureAtAtlasIndex(
                                         *ptrCurrAtlas,
-                                        { atPosX,atPosY },
+                                        { renderPosX,renderPosY },
                                         (int)currTexture.textureIndex.first,
-                                        lookupTextureDimensions[(int)TEXTUREID::TERRAIN],
-                                        TILE_SIZE
+                                        lookupTextureAtlasDimensions[(int)currTexture.atlas],
+                                        (isSpecialTile) ? 0 : TILE_SIZE
                                     );
                                     if (currTexture.textureIndex.first != currTexture.textureIndex.second)
                                     {
@@ -442,6 +493,13 @@ int main(int argc, char* argv[])
                                                         return true;
                                                     }
                                                 }
+                                                if (currTexture.atlas == ATLASID::PLANTS)
+                                                {
+                                                    if (currTexture.textureIndex.second == (uint8_t)TEXTUREINDEX_PLANTS::COUNT)
+                                                    {
+                                                        return true;
+                                                    }
+                                                }
                                                 return false;
                                             };
                                         bool nilFound = isSecondTextureNil();
@@ -449,9 +507,9 @@ int main(int argc, char* argv[])
                                         {
                                             DrawTextureAtAtlasIndex(
                                                 *ptrCurrAtlas,
-                                                { atPosX,atPosY },
+                                                { renderPosX,renderPosY },
                                                 (int)currTexture.textureIndex.second,
-                                                lookupTextureDimensions[(int)TEXTUREID::TERRAIN],
+                                                lookupTextureAtlasDimensions[(int)currTexture.atlas],
                                                 TILE_SIZE
                                             );
                                         }
@@ -484,10 +542,10 @@ int main(int argc, char* argv[])
             F3_TOGGLE = !F3_TOGGLE;
         }
         /* Debug User Interface. */ if (F3_TOGGLE) {
-            static util_printui ui;
+            // tatic util_printui ui;
             static const int UI_OURFONTSIZE = 24;
             static const char* UI_GAMEVERSION = "pre-alpha (0.0.0)";
-            ui.resetui();
+            // ui.resetui();
             ui.uiOffsetX += 10;
 
             ui.setColor(BLACK);
