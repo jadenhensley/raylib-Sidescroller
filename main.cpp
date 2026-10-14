@@ -145,6 +145,104 @@ void DrawTextureAtAtlasIndex(Texture& txt, Vector2 pos, const int& idx, const Di
     DrawTexturePro(txt, source, dest, { 0.0f,0.0f }, 0.0f, WHITE);
 }
 
+typedef std::string ActionName;
+struct InputState
+{
+    int code = 0;
+    bool isDown = false;
+    bool isPressed = false;
+    bool isReleased = false;
+    bool isUp = true;
+};
+
+
+class ActionInputSystem
+{
+private:
+    std::unordered_map<ActionName, InputState> actions;
+public:
+    void AddOrSetAction(ActionName argActionName, int argCode)
+    {
+        InputState state;
+        state.code = argCode;
+        actions[argActionName] = state;
+    }
+    void Update()
+    {
+        for (auto& [key, value] : actions)
+        {
+            value.isDown = IsKeyDown(value.code);
+            value.isPressed = IsKeyPressed(value.code);
+            value.isReleased = IsKeyReleased(value.code);
+            value.isUp = IsKeyUp(value.code);
+        }
+    }
+    InputState* GetInputStateFromAction(ActionName argActionName)
+    {
+        auto it = actions.find(argActionName);
+        if (it != actions.end())
+        {
+            return &actions.at(argActionName);
+        }
+        else
+        {
+            return nullptr;
+        }
+    }
+};
+
+enum class RaycastAxis {
+    RAYCAST_AXISX,
+    RAYCAST_AXISY
+};
+
+enum class RaycastDirection : int {
+    RAYCAST_LEFT = -1,
+    RAYCAST_RIGHT = 1,
+    RAYCAST_UP = -1,
+    RAYCAST_DOWN = 1
+};
+
+bool IsRaycastHitting(
+    RaycastAxis axis,
+    RaycastDirection direction,
+    float rayOrigin,
+    float targetDistance,
+    Rectangle box,
+    float& outDistance
+) {
+    float boxMin = 0.0f;
+    float boxMax = 0.0f;
+    if (axis == RaycastAxis::RAYCAST_AXISX)
+    {
+        boxMin = box.x;
+        boxMax = box.x + box.width;
+    }
+    if (axis == RaycastAxis::RAYCAST_AXISY)
+    {
+        boxMin = box.y;
+        boxMax = box.y + box.height;
+    }
+
+    float t1 = (boxMin - rayOrigin) / (float)direction;
+    float t2 = (boxMax - rayOrigin) / (float)direction;
+
+    float tNear = std::min(t1, t2);
+    float tFar = std::max(t1, t2);
+
+    if (tFar < 0.0f)
+    {
+        return false;
+    }
+    if (tFar > targetDistance)
+    {
+        return false;
+    }
+    // Passed both checks, so it must be true.
+    outDistance = (tNear < 0.0f) ? 0.0f : tNear;
+    return true;
+}
+
 int main(int argc, char* argv[])
 {
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Macaroni");
@@ -162,11 +260,14 @@ int main(int argc, char* argv[])
 
     ChunkManager chunkManager = {};
 
+    ActionInputSystem inputs;
+    inputs.AddOrSetAction("PlayerWalkLeft", KEY_A);
+    inputs.AddOrSetAction("PlayerWalkRight", KEY_D);
+    inputs.AddOrSetAction("PlayerJump", KEY_SPACE);
+
     Texture ATLAS_CHARSKIN = LoadTexture("./assets/atlas_characterSkin_4x.png");
     Texture ATLAS_TERRAIN = LoadTexture("./assets/atlas_terrainSheet_2x5.png");
     Texture ATLAS_PLANTS = LoadTexture("./assets/atlas_plantSheet_3x1.png");
-
-
 
     static bool isRunning = true;
     static float elapsed = 0.0f;
@@ -175,13 +276,16 @@ int main(int argc, char* argv[])
         float dt = GetFrameTime();
         elapsed += dt;
 
+        inputs.Update();
+
         static Vector2 playerPos = { 0.0f,0.0f };
-        
+        static bool isPlayerTouchingGround = false;
+
         static Timer timerOnClickCooldown;
         static bool isClickPressedThisFrame = false;
         /* Click Feedback */ {
             timerOnClickCooldown.setDuration(dt * 3.0f); // i.e. 3 frames for each click. guesstimate. Meaning: 20 clicks per second.
-        
+
             timerOnClickCooldown.tick();
 
             isClickPressedThisFrame = false;
@@ -228,15 +332,41 @@ int main(int argc, char* argv[])
         BeginMode2D(camera);
         camera.target = cameraPos; // always assign.
 
-        int inputDirX = (int)(IsKeyDown(KEY_RIGHT)) - (int)(IsKeyDown(KEY_LEFT));
-        int inputDirY = (int)(IsKeyDown(KEY_DOWN)) - (int)(IsKeyDown(KEY_UP));
-        static const float MOVEMENT_SPEED = 320.0f;
-        const float MOVEMENT_DELTA_X = inputDirX * MOVEMENT_SPEED * dt;
-        const float MOVEMENT_DELTA_Y = inputDirY * MOVEMENT_SPEED * dt;
-        playerPos.x += MOVEMENT_DELTA_X;
-        playerPos.y += MOVEMENT_DELTA_Y;
+        InputState* ptrActionWalkLeft = inputs.GetInputStateFromAction("PlayerWalkLeft");
+        InputState* ptrActionWalkRight = inputs.GetInputStateFromAction("PlayerWalkRight");
+        int inputDirX = (int)(ptrActionWalkRight ? ptrActionWalkRight->isDown : 0) - (int)(ptrActionWalkLeft ? ptrActionWalkLeft->isDown : 0);
 
-        bool playerIsMoving = (inputDirX != 0 || inputDirY != 0);
+        static const float MOVEMENT_SPEED = TILE_SIZE * 8.0f; // we want to walk 8 tiles in one second.
+        static const float JUMP_FORCE = 20.0f;
+        static const float FALLING_FORCE = 3.5f;
+        const float MOVEMENT_DELTA_X = inputDirX * MOVEMENT_SPEED * dt;
+        // const float MOVEMENT_DELTA_Y = inputDirY * MOVEMENT_SPEED * dt;
+        InputState* ptrActionJump = inputs.GetInputStateFromAction("PlayerJump");
+        
+        playerPos.x += MOVEMENT_DELTA_X;
+        
+        static float yVel = 0.0f;
+        //if (IsKeyReleased(KEY_ENTER))
+        
+        {
+            if (!isPlayerTouchingGround)
+            {
+                if (yVel < FALLING_FORCE * 5)
+                {
+                    yVel += FALLING_FORCE;
+                }
+            }
+            else
+            {
+                if (ptrActionJump && ptrActionJump->isDown)
+                {
+                    yVel = -1.0f * JUMP_FORCE; // is negative.
+                }                
+            }
+            playerPos.y += yVel;
+        }
+
+        bool playerIsMoving = (inputDirX != 0);
         if (playerIsMoving)
         {
             cameraMode = CAMERAMODE_FOLLOWPLAYER;
@@ -254,7 +384,7 @@ int main(int argc, char* argv[])
 
         
         const int CHUNK_WORLD_WIDTH = TILE_SIZE * CHUNK_WIDTH;
-        int playerChunkX = playerPos.x / CHUNK_WORLD_WIDTH;
+        int playerChunkX = (int)floor( playerPos.x / CHUNK_WORLD_WIDTH );
         int playerChunkY = (int)floor( (float)playerPos.y / CHUNK_WORLD_WIDTH );
         const int SPAWN_CHUNK_X = 0;
         const int SPAWN_CHUNK_Y = 0;
@@ -267,6 +397,65 @@ int main(int argc, char* argv[])
         
         const int minChunkLoadY = *centerChunkY - 1;
         const int maxChunkLoadY = *centerChunkY + 4;
+
+        Chunk* ptrCollisionChunk = chunkManager.GetChunk(playerChunkX, playerChunkY);
+        if (ptrCollisionChunk != nullptr)
+        {
+            isPlayerTouchingGround = false;
+            // handle collisions.
+            for (int tilePosX = 0; tilePosX < CHUNK_WIDTH; tilePosX++)
+            {
+                for (int tilePosY = 0; tilePosY < CHUNK_WIDTH; tilePosY++)
+                {
+                    uint8_t* currTile = &ptrCollisionChunk->tiles[tilePosY * CHUNK_WIDTH + tilePosX];
+                    auto tileIsCollidable = [currTile]() -> bool
+                        {
+                            if (*currTile == (uint8_t)TILEID::AIR
+                                || *currTile == (uint8_t)TILEID::CACTUS
+                                || *currTile == (uint8_t)TILEID::TREE_OAK
+                                || *currTile == (uint8_t)TILEID::TREE_SPRUCE)
+                            {
+                                return false;
+                            }
+                            return true;
+                        };
+                    if (!tileIsCollidable()) continue;
+                    Rectangle boundingBox;
+                    boundingBox.x = (ptrCollisionChunk->x * CHUNK_WIDTH * TILE_SIZE) + (tilePosX * TILE_SIZE);
+                    boundingBox.y = -TILE_SIZE + (ptrCollisionChunk->y * CHUNK_WIDTH * TILE_SIZE) + (tilePosY * TILE_SIZE);
+                    boundingBox.width = TILE_SIZE;
+                    boundingBox.height = TILE_SIZE;
+                    float outDistance = 0.0f;
+                    if (IsRaycastHitting(
+                        RaycastAxis::RAYCAST_AXISY,
+                        RaycastDirection::RAYCAST_DOWN,
+                        playerPos.y,
+                        yVel,
+                        boundingBox,
+                        outDistance
+                    ))
+                    {
+                        int playerTileX = (int)floor(playerPos.x / TILE_SIZE);
+                        int localTileX = playerTileX % CHUNK_WIDTH;
+                        if (localTileX != tilePosX)
+                        {
+                            continue;
+                        }
+                        printf("\n=============\nPlayer colliding at tile = {%d, %d} in chunk = {%d, %d}",
+                            tilePosX, tilePosY, ptrCollisionChunk->x, ptrCollisionChunk->y, outDistance);
+                        printf("\nOut Distance = %f", outDistance);
+                        printf("\nTile ID = %u", *currTile);
+                        printf("\n=============\n");
+                        isPlayerTouchingGround = true;
+                    }
+                }
+            }
+        }
+        /*if (ptrCollisionChunk != nullptr)
+        {
+            printf("Collision Chunk = {%d, %d}", ptrCollisionChunk->x, ptrCollisionChunk->y);
+        }*/
+
         for (int currChunkX = minChunkLoadX; currChunkX <= maxChunkLoadX; ++currChunkX)
         {
             for (int currChunkY = minChunkLoadY; currChunkY <= maxChunkLoadY; ++currChunkY)
@@ -421,8 +610,8 @@ int main(int argc, char* argv[])
                                 ptrCurrChunk->tiles[((CHUNK_WIDTH - 1 - posY) * CHUNK_WIDTH) + posX] = currPlantId;
                                 if (currPlantId > 0)
                                 {
-                                    printf("Plant of tile ID %d spawning at tile = {X: %d , Y: %d } chunk = {X: %d , Y: %d} \n \t Elevation = { %d } \n",
-                                        (int)currPlantId, posX, CHUNK_WIDTH - 1 - posY, ptrCurrChunk->x, ptrCurrChunk->y, elevation);
+                                    // printf("Plant of tile ID %d spawning at tile = {X: %d , Y: %d } chunk = {X: %d , Y: %d} \n \t Elevation = { %d } \n",
+                                    //    (int)currPlantId, posX, CHUNK_WIDTH - 1 - posY, ptrCurrChunk->x, ptrCurrChunk->y, elevation);
                                 }
                             }
                             if (ptrCurrChunk->y > 0)
@@ -535,6 +724,31 @@ int main(int argc, char* argv[])
         ui.setFontSize(24);
         ui.printui(TextFormat("Player Chunk X: %d", playerChunkX));
         ui.printui(TextFormat("Player Chunk Y: %d", playerChunkY));
+        ui.printui(TextFormat("Y Velocity: %f", yVel));
+        ui.printui(TextFormat("Player Touching Ground: %d", (int)isPlayerTouchingGround));
+
+        static Timer timerPlayerDelta{ 1.0f };
+        static Timer timerPrintDuration = Timer{ 0.77789f };
+        static Vector2 originalPos = { playerPos.x,playerPos.y };
+        static std::string outputStr;
+        if (timerPlayerDelta.hasEnded())
+        {
+            int distancePx = (int)playerPos.x - (int)originalPos.x;
+            outputStr = TextFormat("Distance walked in one second: %d Pixels.", distancePx);
+            originalPos = { playerPos.x,playerPos.y };
+            timerPlayerDelta.start();
+            timerPrintDuration.start();
+        }
+        if (playerIsMoving)
+        {
+            timerPlayerDelta.tick();
+        }
+        if (!timerPrintDuration.hasEnded())
+        {
+            timerPrintDuration.tick();
+            ui.setColor(GREEN);
+            ui.printui(outputStr.c_str());
+        }
 
         static bool F3_TOGGLE = false;
         if (IsKeyPressed(KEY_F3))
